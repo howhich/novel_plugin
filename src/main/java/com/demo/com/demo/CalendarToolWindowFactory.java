@@ -9,6 +9,7 @@ import com.intellij.openapi.project.Project;
 import com.intellij.openapi.wm.ToolWindow;
 import com.intellij.openapi.wm.ToolWindowFactory;
 import com.intellij.ui.components.JBScrollPane;
+import com.intellij.ui.components.JBTextField;
 import com.intellij.ui.content.Content;
 import com.intellij.ui.content.ContentFactory;
 import org.apache.commons.lang3.StringUtils;
@@ -17,33 +18,43 @@ import org.jetbrains.annotations.NotNull;
 import javax.swing.*;
 import java.awt.*;
 import java.io.BufferedReader;
+import java.io.File;
 import java.io.FileReader;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.Objects;
+import java.util.Timer;
+import java.util.TimerTask;
 
 final class CalendarToolWindowFactory implements ToolWindowFactory, DumbAware {
-
+  private static ArrayList<String> fileNames = new ArrayList<>();
   @Override
   public void createToolWindowContent(@NotNull Project project, @NotNull ToolWindow toolWindow) {
     CalendarToolWindowContent toolWindowContent = new CalendarToolWindowContent(toolWindow);
     Content content = ContentFactory.getInstance().createContent(toolWindowContent.getContentPanel(), "", false);
     toolWindow.getContentManager().addContent(content);
+    TimerTask timerTask = new TimerTask() {
+      @Override
+      public void run() {
+        toolWindowContent.updateCurrentDateTime(false);
+      }
+    };
+    Timer timer = new Timer();
+    timer.schedule(timerTask, 60*1000, 60*1000);
   }
 
   private static class CalendarToolWindowContent {
     private String filePath;
-
-//    private static final String CALENDAR_ICON_PATH = "/toolWindow/Calendar-icon.png";
-//    private static final String TIME_ZONE_ICON_PATH = "/toolWindow/Time-zone-icon.png";
-//    private static final String TIME_ICON_PATH = "/toolWindow/Time-icon.png";
 
     private final JPanel contentPanel = new JPanel();
     private final JLabel currentDate = new JLabel();
     private final JLabel timeZone = new JLabel();
     private final JLabel currentTime = new JLabel();
     private final JTextArea content = new JTextArea();
+    private final JLabel fileName = new JLabel();
+    private final JBTextField jbTextField = new JBTextField();
 
     public CalendarToolWindowContent(ToolWindow toolWindow) {
       contentPanel.setLayout(new BorderLayout(0, 0));
@@ -51,16 +62,19 @@ final class CalendarToolWindowFactory implements ToolWindowFactory, DumbAware {
       contentPanel.add(createCalendarPanel(), BorderLayout.PAGE_START);
       contentPanel.add(createControlsPanel(toolWindow), BorderLayout.CENTER);
       contentPanel.add(createTextPanel(), BorderLayout.PAGE_END);
-      updateCurrentDateTime();
+      jbTextField.setText("0");
+      updateCurrentDateTime(true);
     }
     private JPanel createTextPanel(){
       JPanel textPanel = new JPanel();
       JBScrollPane jbScrollPane = new JBScrollPane(content);
       content.setFont(new Font("微软雅黑", Font.PLAIN, 15));
-      jbScrollPane.setPreferredSize(new Dimension(200,40));
+      jbScrollPane.setPreferredSize(new Dimension(1000,40));
       jbScrollPane.setMaximumSize(new Dimension(200,40));
       jbScrollPane.setMinimumSize(new Dimension(200,40));
       textPanel.add(jbScrollPane);
+      textPanel.add(fileName);
+      textPanel.add(jbTextField);
       return textPanel;
     }
     private void updateText(Project project) {
@@ -69,43 +83,33 @@ final class CalendarToolWindowFactory implements ToolWindowFactory, DumbAware {
       FileChooser.chooseFile(descriptor, project, null, files -> {
         // 用户选择完文件后的回调
         if (files.exists()) {
-          String path = files.getPath();
-          filePath = path;
-          StringBuilder sb = new StringBuilder();
-          try(BufferedReader br = new BufferedReader(new FileReader(filePath, StandardCharsets.UTF_8))){
-            String line;
-            while((line = br.readLine()) != null){
-              sb.append(line);
-            }
-          } catch (IOException e) {
-            throw new RuntimeException(e);
-          }
-          content.setText(sb.toString());
-
+          File realFile = new File(files.getPath());
+          FileUtil.collectFiles(realFile,fileNames);
+            turnToPage(0);
         }
       });
     }
     @NotNull
     private JPanel createCalendarPanel() {
       JPanel calendarPanel = new JPanel();
-//      setIconLabel(currentDate, CALENDAR_ICON_PATH);
-//      setIconLabel(timeZone, TIME_ZONE_ICON_PATH);
-//      setIconLabel(currentTime, TIME_ICON_PATH);
       calendarPanel.add(currentDate);
       calendarPanel.add(timeZone);
       calendarPanel.add(currentTime);
       return calendarPanel;
     }
 
-    private void setIconLabel(JLabel label, String imagePath) {
-      label.setIcon(new ImageIcon(Objects.requireNonNull(getClass().getResource(imagePath))));
-    }
-
     @NotNull
     private JPanel createControlsPanel(ToolWindow toolWindow) {
       JPanel controlsPanel = new JPanel();
+      JButton lastButton = new JButton("Last");
+      lastButton.addActionListener(e -> {
+        int pageNum = Integer.parseInt(jbTextField.getText());
+        turnToPage(pageNum-1);
+      });
+      controlsPanel.add(lastButton);
+
       JButton refreshDateAndTimeButton = new JButton("Refresh");
-      refreshDateAndTimeButton.addActionListener(e -> updateCurrentDateTime());
+      refreshDateAndTimeButton.addActionListener(e -> updateCurrentDateTime(false));
       controlsPanel.add(refreshDateAndTimeButton);
 
       JButton hideToolWindowButton = new JButton("Hide");
@@ -115,14 +119,25 @@ final class CalendarToolWindowFactory implements ToolWindowFactory, DumbAware {
       JButton fileChooserButton = new JButton("FileChooser");
       fileChooserButton.addActionListener(e -> updateText(toolWindow.getProject()));
       controlsPanel.add(fileChooserButton);
+
+      JButton nextButton = new JButton("Next");
+      nextButton.addActionListener(e -> {
+        int pageNum = Integer.parseInt(jbTextField.getText());
+        turnToPage(pageNum+1);
+      });
+      controlsPanel.add(nextButton);
       return controlsPanel;
     }
 
-    private void updateCurrentDateTime() {
+    private void updateCurrentDateTime(Boolean init) {
       Calendar calendar = Calendar.getInstance();
       currentDate.setText(getCurrentDate(calendar));
       timeZone.setText(getTimeZone(calendar));
       currentTime.setText(getCurrentTime(calendar));
+      if(!init){
+        int pageNum = Integer.parseInt(jbTextField.getText());
+        turnToPage(pageNum);
+      }
     }
 
     private String getCurrentDate(Calendar calendar) {
@@ -149,7 +164,26 @@ final class CalendarToolWindowFactory implements ToolWindowFactory, DumbAware {
     public JPanel getContentPanel() {
       return contentPanel;
     }
+    public void turnToPage(int page){
+      if (page<0 || page>=fileNames.size()){
+        return;
+      }
+      jbTextField.setText(String.valueOf(page));
+      String path = fileNames.get(page);
+      filePath = path;
+      StringBuilder sb = new StringBuilder();
+      try(BufferedReader br = new BufferedReader(new FileReader(filePath, StandardCharsets.UTF_8))){
+        String line;
+        while((line = br.readLine()) != null){
+          sb.append(line);
+        }
+      } catch (IOException e) {
+        throw new RuntimeException(e);
+      }
+      content.setText(sb.toString());
+      fileName.setText(path.substring(filePath.lastIndexOf("\\") + 1));
+    }
+}
 
-  }
 
 }
