@@ -1,10 +1,14 @@
 // Copyright 2000-2023 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.demo.com.demo;
 
+import com.intellij.openapi.fileChooser.FileChooser;
+import com.intellij.openapi.fileChooser.FileChooserDescriptor;
+import com.intellij.openapi.fileChooser.FileChooserDescriptorFactory;
 import com.intellij.openapi.project.DumbAware;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.wm.ToolWindow;
 import com.intellij.openapi.wm.ToolWindowFactory;
+import com.intellij.ui.components.JBScrollPane;
 import com.intellij.ui.content.Content;
 import com.intellij.ui.content.ContentFactory;
 import org.apache.commons.lang3.StringUtils;
@@ -12,7 +16,10 @@ import org.jetbrains.annotations.NotNull;
 
 import javax.swing.*;
 import java.awt.*;
-import java.io.*;
+import java.io.BufferedReader;
+import java.io.FileReader;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.util.Calendar;
 import java.util.Objects;
 
@@ -26,51 +33,64 @@ final class CalendarToolWindowFactory implements ToolWindowFactory, DumbAware {
   }
 
   private static class CalendarToolWindowContent {
+    private String filePath;
 
-    private static final String CALENDAR_ICON_PATH = "/toolWindow/Calendar-icon.png";
-    private static final String TIME_ZONE_ICON_PATH = "/toolWindow/Time-zone-icon.png";
-    private static final String TIME_ICON_PATH = "/toolWindow/Time-icon.png";
+//    private static final String CALENDAR_ICON_PATH = "/toolWindow/Calendar-icon.png";
+//    private static final String TIME_ZONE_ICON_PATH = "/toolWindow/Time-zone-icon.png";
+//    private static final String TIME_ICON_PATH = "/toolWindow/Time-icon.png";
 
     private final JPanel contentPanel = new JPanel();
     private final JLabel currentDate = new JLabel();
     private final JLabel timeZone = new JLabel();
     private final JLabel currentTime = new JLabel();
-
     private final JTextArea content = new JTextArea();
 
     public CalendarToolWindowContent(ToolWindow toolWindow) {
-      contentPanel.setLayout(new BorderLayout(0, 20));
-      contentPanel.setBorder(BorderFactory.createEmptyBorder(40, 0, 0, 0));
+      contentPanel.setLayout(new BorderLayout(0, 0));
+      contentPanel.setBorder(BorderFactory.createEmptyBorder(0, 0, 0, 0));
       contentPanel.add(createCalendarPanel(), BorderLayout.PAGE_START);
       contentPanel.add(createControlsPanel(toolWindow), BorderLayout.CENTER);
-      contentPanel.add(createNovelPanel(), BorderLayout.PAGE_END);
+      contentPanel.add(createTextPanel(), BorderLayout.PAGE_END);
       updateCurrentDateTime();
     }
-    @NotNull
-    private JPanel createNovelPanel() {
-      JPanel novelPanel = new JPanel();
-      String filePath = "C:\\Users\\howhich\\Desktop\\nginx.txt";
-      StringBuilder sb = new StringBuilder();
-      try(BufferedReader br = new BufferedReader(new FileReader(filePath))){
-        String line;
-        while((line = br.readLine()) != null){
-          sb.append(line).append("\n");
+    private JPanel createTextPanel(){
+      JPanel textPanel = new JPanel();
+      JBScrollPane jbScrollPane = new JBScrollPane(content);
+      content.setFont(new Font("微软雅黑", Font.PLAIN, 15));
+      jbScrollPane.setPreferredSize(new Dimension(200,40));
+      jbScrollPane.setMaximumSize(new Dimension(200,40));
+      jbScrollPane.setMinimumSize(new Dimension(200,40));
+      textPanel.add(jbScrollPane);
+      return textPanel;
+    }
+    private void updateText(Project project) {
+      FileChooserDescriptor descriptor = FileChooserDescriptorFactory.createSingleFileDescriptor();
+      // 显示文件选择对话框
+      FileChooser.chooseFile(descriptor, project, null, files -> {
+        // 用户选择完文件后的回调
+        if (files.exists()) {
+          String path = files.getPath();
+          filePath = path;
+          StringBuilder sb = new StringBuilder();
+          try(BufferedReader br = new BufferedReader(new FileReader(filePath, StandardCharsets.UTF_8))){
+            String line;
+            while((line = br.readLine()) != null){
+              sb.append(line);
+            }
+          } catch (IOException e) {
+            throw new RuntimeException(e);
+          }
+          content.setText(sb.toString());
+
         }
-      } catch (FileNotFoundException e) {
-          throw new RuntimeException(e);
-      } catch (IOException e) {
-          throw new RuntimeException(e);
-      }
-        content.append(sb.toString());
-      novelPanel.add(content);
-      return novelPanel;
+      });
     }
     @NotNull
     private JPanel createCalendarPanel() {
       JPanel calendarPanel = new JPanel();
-      setIconLabel(currentDate, CALENDAR_ICON_PATH);
-      setIconLabel(timeZone, TIME_ZONE_ICON_PATH);
-      setIconLabel(currentTime, TIME_ICON_PATH);
+//      setIconLabel(currentDate, CALENDAR_ICON_PATH);
+//      setIconLabel(timeZone, TIME_ZONE_ICON_PATH);
+//      setIconLabel(currentTime, TIME_ICON_PATH);
       calendarPanel.add(currentDate);
       calendarPanel.add(timeZone);
       calendarPanel.add(currentTime);
@@ -87,9 +107,14 @@ final class CalendarToolWindowFactory implements ToolWindowFactory, DumbAware {
       JButton refreshDateAndTimeButton = new JButton("Refresh");
       refreshDateAndTimeButton.addActionListener(e -> updateCurrentDateTime());
       controlsPanel.add(refreshDateAndTimeButton);
+
       JButton hideToolWindowButton = new JButton("Hide");
       hideToolWindowButton.addActionListener(e -> toolWindow.hide(null));
       controlsPanel.add(hideToolWindowButton);
+
+      JButton fileChooserButton = new JButton("FileChooser");
+      fileChooserButton.addActionListener(e -> updateText(toolWindow.getProject()));
+      controlsPanel.add(fileChooserButton);
       return controlsPanel;
     }
 
